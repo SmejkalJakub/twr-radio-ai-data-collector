@@ -4,8 +4,10 @@
 
 #include <application.h>
 
+// Send every 10 minutes
 #define UPDATE_INTERVAL (10 * 60 * 1000)
 
+// Send every 10 seconds
 //#define UPDATE_INTERVAL (10000)
 
 // LED instance
@@ -18,17 +20,13 @@ twr_button_t button;
 twr_tmp112_t tmp112;
 float core_tmp112_value = 0;
 
+// Humidity tag instance
 twr_tag_humidity_t humidity_tag;
 float tag_humidity = 0;
 
 uint16_t button_click_count = 0;
 
 twr_scheduler_task_id_t send_data_task_id;
-
-struct tm datetime;
-
-float lastTemperature = 0;
-float lastHumidity = 0;
 
 // Button event callback
 void button_event_handler(twr_button_t *self, twr_button_event_t event, void *event_param)
@@ -48,6 +46,7 @@ void button_event_handler(twr_button_t *self, twr_button_event_t event, void *ev
     }
 }
 
+// Save humidity for sending into a variable
 void humidity_tag_event_handler(twr_tag_humidity_t *self, twr_tag_humidity_event_t event, void *event_param)
 {
     if (event == TWR_TAG_HUMIDITY_EVENT_UPDATE)
@@ -61,6 +60,7 @@ void humidity_tag_event_handler(twr_tag_humidity_t *self, twr_tag_humidity_event
     }
 }
 
+// Save temperature for sending into a variable
 void tmp112_event_handler(twr_tmp112_t *self, twr_tmp112_event_t event, void *event_param)
 {
     if (event == TWR_TMP112_EVENT_UPDATE)
@@ -74,38 +74,24 @@ void tmp112_event_handler(twr_tmp112_t *self, twr_tmp112_event_t event, void *ev
     }
 }
 
+// This function sends measured data over the radio
 void send_data_task()
 {
     twr_log_debug("SENDING DATA");
 
+    // Create string in JSON format
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "{\\\"temperature\\\":%.2f,\\\"humidity\\\":%.2f}", core_tmp112_value, tag_humidity);
     twr_log_debug("DATA: %s", buffer);
     twr_radio_pub_string("data", buffer);
 
-    lastHumidity = tag_humidity;
-    lastTemperature = core_tmp112_value;
-
+    // Schedule next sending
     twr_scheduler_plan_current_relative(UPDATE_INTERVAL + 1000);
 }
 
 // Application initialization function which is called once after boot
 void application_init(void)
 {
-    __HAL_RCC_CRC_CLK_ENABLE();
-
-    /*struct tm datetime;
-
-    datetime.tm_hour = 12;
-    datetime.tm_min = 43;
-    datetime.tm_sec = 00;
-
-    datetime.tm_mon = 03;
-    datetime.tm_mday = 20;
-    datetime.tm_year = 123;
-
-    twr_rtc_set_datetime(&datetime, 0);*/
-
     // Initialize logging
     twr_log_init(TWR_LOG_LEVEL_DUMP, TWR_LOG_TIMESTAMP_ABS);
 
@@ -122,6 +108,7 @@ void application_init(void)
     twr_tmp112_set_event_handler(&tmp112, tmp112_event_handler, NULL);
     twr_tmp112_set_update_interval(&tmp112, UPDATE_INTERVAL);
 
+    // Initialize humidity tag
     twr_tag_humidity_init(&humidity_tag, TWR_TAG_HUMIDITY_REVISION_R3, TWR_I2C_I2C0, TWR_TAG_HUMIDITY_I2C_ADDRESS_DEFAULT);
     twr_tag_humidity_set_event_handler(&humidity_tag, humidity_tag_event_handler, NULL);
     twr_tag_humidity_set_update_interval(&humidity_tag, UPDATE_INTERVAL);
@@ -129,6 +116,7 @@ void application_init(void)
     // Initialize radio
     twr_radio_init(TWR_RADIO_MODE_NODE_SLEEPING);
 
+    // Register send task
     send_data_task_id = twr_scheduler_register(send_data_task, NULL, UPDATE_INTERVAL + 1000);
 
     // Send radio pairing request
